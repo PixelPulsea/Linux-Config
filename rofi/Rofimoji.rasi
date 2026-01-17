@@ -1,0 +1,111 @@
+configuration {
+    show-icons:      true;
+    icon-theme:      "Papirus"; /* Replace with your installed icon theme */
+    /*display-drun:    "";       Optional: changes the search icon/text */
+}
+
+* {
+    /*Colours*/
+    bg: #24273a;
+    bg-alt: #363a4f;
+    fg: #b7bdf8;
+    accent: #a5adcb;
+
+    /*general*/
+    margin: 0;
+    padding: 0;
+    spacing: 0;
+    font: "JetBrainsMono Nerd Font 12";
+}
+
+window {
+    width:  30%;
+    background-color: @bg;
+    border:           2px;
+    border-color:     @accent;
+    border-radius:    10px;
+    padding:          5px;
+}
+
+/*The Mainbox*/
+mainbox {
+    background-color: transparent;
+    children: [ "inputbar", "listview" ];
+    spacing: 10px;
+}
+
+textbox {
+    text-color:       @fg;
+    background-color: transparent;
+    font:             "JetBrainsMono Nerd Font Italic 12"; /* Use your nice font here */
+    horizontal-align: 0.5; /* Centers the "no match" text */
+    vertical-align:   0.5;
+}
+
+/*Search bar area*/
+inputbar {
+    background-color: @bg-alt;
+    border-radius: 5px;
+    padding: 8px 8px;
+    children: [ "entry" ];
+}
+
+prompt {
+    background-color: transparent;
+    text-color: @accent;
+    padding: 5px;
+}
+
+entry {
+    background-color: transparent;
+    text-color: @fg;
+    placeholder: "Search...";
+}
+
+/*the Icons*/
+listview {
+    background-color: transparent;
+    columns: 4;
+    lines: 4;
+    fixed-height: true;
+}
+
+element {
+    background-color: @bg;
+    border-radius: 5px;
+    padding: 10px 0px 10px -25px;
+}
+
+element normal.normal {
+    background-color: @bg;
+    text-color: white;
+}
+
+element alternate.normal {
+    background-color: @bg;
+    text-color: white;
+}
+
+
+/* Style for the item currently selected */
+element selected {
+    background-color: @accent;
+    text-color: @bg;
+}
+
+/* Style for icons (if enabled in config) */
+element-icon {
+    size: 24px;
+    background-color: transparent;
+}
+
+element-text {
+    background-color: transparent;
+    text-color: inherit;
+    vertical-align: 0.5;
+    horizontal-align: 0.5;
+    font: "JetBrainsMono 30";
+}
+
+
+
