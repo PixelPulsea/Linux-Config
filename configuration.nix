@@ -8,7 +8,7 @@
   system.nixos.label = "-";
 
   services.xserver.enable = true;
-  services.power-profiles-daemon.enable = false;
+  services.power-profiles-daemon.enable = true;
   services.displayManager.ly.enable = true;
   services.gvfs.enable = true;
   services.udisks2.enable = true;
@@ -26,38 +26,19 @@
     nvidiaSettings = true;
   };
 
+  boot.extraModulePackages = with config.boot.kernelPackages; [
+    v4l2loopback
+  ];
+  boot.kernelModules = [ "v4l2loopback" ];
+  boot.extraModprobeConfig = ''
+    options v4l2loopback exclusive_caps=1 card_label="DroidCam"
+  '';
+
+  programs.adb.enable = true;
+
   environment.sessionVariables = {
     WLR_NO_HARDWARE_CURSORS = "1";
     NIXOS_OZONE_WL = "1";
-  };
-
-  #tlp
-  services.tlp = {
-    enable = true;
-    settings = {
-      # --- CPU Performance ---
-      # 'powersave' is the best governor for intel_pstate
-      CPU_SCALING_GOVERNOR_ON_BAT = "powersave";
-      CPU_SCALING_GOVERNOR_ON_AC = "performance";
-      
-      # 'balance_power' is more "usable" than 'power'—it prevents the UI from lagging
-      CPU_ENERGY_PERF_POLICY_ON_BAT = "balance_power";
-
-      #The acpi switch
-      PLATFORM_PROFILE_ON_AC = "balanced";
-      PLATFORM_PROFILE_ON_BAT = "low-power";
-
-      # Enable Turbo on AC, keep it off on Battery to prevent heat spikes
-      CPU_BOOST_ON_AC = 1;
-      CPU_BOOST_ON_BAT = 0;
-
-      # --- Hardware Power Saving ---
-      # Aggressive disk and bus sleep
-      RUNTIME_PM_ON_BAT = "auto";
-      PCIE_ASPM_ON_BAT = "powersupersave";
-      PCIE_ASPM_ON_AC = "balanced"; 
-      USB_AUTOSUSPEND = 1;
-    };
   };
 
   hardware.bluetooth.enable = true;
@@ -151,7 +132,7 @@
   users.users.me = {
     isNormalUser = true;
     description = "Me";
-    extraGroups = [ "networkmanager" "wheel" ];
+    extraGroups = [ "networkmanager" "wheel" "adbusers" ];
     packages = with pkgs; [];
   };
 
@@ -167,7 +148,6 @@
      waybar 
      hyprpaper 
      hyprlock
-     hypridle
      hyprshot
      usbutils
      nautilus  
@@ -194,11 +174,15 @@
      rofimoji
      nwg-look
      papirus-icon-theme
+     droidcam
      phinger-cursors
      cowsay
      catppuccin-gtk
      fortune
      tree-sitter
+     python3
+     lua
+     lua52Packages.luarocks
      
      #clipboard
      cliphist
@@ -212,9 +196,11 @@
      git
      gcc
      ani-cli
+     bc
      openjdk21
      btop
      playerctl
+     entr
   #  vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
   #  wget
   ];
@@ -236,23 +222,8 @@
   fonts.fontconfig.useEmbeddedBitmaps = true;
 	
   programs.neovim = {
-  enable = true;
-  configure = {
-    customRC = ''
-      set termguicolors
-      lua << EOF
-        -- This is the "Nice" part!
-        vim.cmd[[colorscheme tokyonight]]
-EOF
-    '';
-    packages.myVimPackage = with pkgs.vimPlugins; {
-      start = [ 
-        tokyonight-nvim 
-        nvim-treesitter.withAllGrammars 
-      ];
-    };
+	  enable = true;
   };
-};
 
 # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
@@ -268,8 +239,8 @@ EOF
   # services.openssh.enable = true;
 
   # Open ports in the firewall.
-   networking.firewall.allowedTCPPorts = [ 22 80 443 17500 ];
-   networking.firewall.allowedUDPPorts = [ 53 17500 ];
+   networking.firewall.allowedTCPPorts = [ 22 80 443 17500 4747 ];
+   networking.firewall.allowedUDPPorts = [ 53 17500 4747 ];
   # Or disable the firewall altogether.
    networking.firewall.enable = true;
 
