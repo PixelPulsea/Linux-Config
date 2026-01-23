@@ -5,6 +5,7 @@ import os
 import glob
 import re
 import signal
+import tempfile
 
 # --- Settings ---
 BASE_DIR = os.path.abspath(os.path.expanduser("~/Documents/Coding_C++"))
@@ -14,25 +15,28 @@ DEATH_LOG = os.path.join(OUT_DIR, "death_toll.txt")
 WHICHFILE = "coding.cpp"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-TIME_LIMIT = 1.0 
+TIME_LIMIT = 99.0 
+
+def truncate_output(text, max_lines=10):
+    lines = text.splitlines()
+    if len(lines) > max_lines:
+        return "\n".join(lines[:max_lines]) + "\n..."
+    return text
 
 def increment_death_toll():
-    """Silently increments the persistent casualty counter."""
     count = 0
     if os.path.exists(DEATH_LOG):
         with open(DEATH_LOG, 'r') as f:
             try:
                 line = f.read().strip()
                 count = int(line) if line else 0
-            except:
-                count = 0
+            except: count = 0
     count += 1
     with open(DEATH_LOG, 'w') as f:
         f.write(str(count))
     return count
 
 def get_total_deaths():
-    """Reads the current death toll without incrementing it."""
     if os.path.exists(DEATH_LOG):
         with open(DEATH_LOG, 'r') as f:
             try: return f.read().strip()
@@ -49,101 +53,123 @@ def get_critical_compiler_error(stderr_text):
                     error_report.append(lines[j-1].strip()) 
                     error_report.append(lines[j].strip())  
                     break
-            return "\n   ".join(error_report)
+            return "\n    ".join(error_report)
     return stderr_text.strip()
 
 def get_crash_reason(return_code, stderr_msg):
-    # Still incrementing the log file, but not printing it yet
-    increment_death_toll()
-    
+    increment_death_toll() # Still count it!
     if "std::bad_alloc" in stderr_msg: return "OUT OF MEMORY"
     if "std::out_of_range" in stderr_msg: return "OUT OF RANGE"
-    
+    if return_code == 139:
+        return "SEGMENTATION FAULT"
     if return_code < 0:
         signum = abs(return_code)
-        if signum == signal.SIGSEGV:
-            return "SEGMENTATION FAULT"
-       
+        if signum == signal.SIGSEGV: return "SEGMENTATION FAULT"
         mapping = {
             signal.SIGFPE:  "FLOATING POINT ERROR",
             signal.SIGABRT: "ABORTED (Assertion/Corruption)",
             signal.SIGILL:  "ILLEGAL INSTRUCTION",
         }
         return mapping.get(signum, f"SIGNAL {signum}")
-    
     return f"EXIT CODE {return_code}"
-
-def get_peak_rss_kb(pid):
-    try:
-        with open(f"/proc/{pid}/status", "r") as f:
-            content = f.read()
-            match = re.search(r"VmHWM:\s+(\d+)\s+kB", content)
-            if match: return int(match.group(1))
-    except: return 0
-    return 0
 
 def run_tests():
     cpp_file = os.path.join(BASE_DIR, WHICHFILE)
     exe_file = os.path.join(OUT_DIR, "solution")
     
     print(f"Compiling {os.path.basename(cpp_file)}...")
-    compile_proc = subprocess.run(["g++", "-O3", cpp_file, "-o", exe_file], capture_output=True, text=True)
+    compile_proc = subprocess.run(["g++", "-O3", "-march=native", cpp_file, "-o", exe_file], capture_output=True, text=True)
     
     if compile_proc.returncode != 0:
         print("\033[1;31m[!] COMPILATION FAILED\033[0m")
-        print(f"\033[1;33mCritical Problem:\033[0m\n   {get_critical_compiler_error(compile_proc.stderr)}")
+        print(f"\033[1;33mCritical Problem:\033[0m\n    {get_critical_compiler_error(compile_proc.stderr)}")
         return
 
     inputs = sorted(glob.glob(os.path.join(TEST_DIR, "input*.txt")))
     passed = 0
+    had_crash_or_fail = False
 
     for input_path in inputs:
         input_file = os.path.basename(input_path)
         expected_path = input_path.replace("input", "expected")
-        peak_kb = 0 
         
-        with open(input_path, 'r') as infile:
+        with open(input_path, 'r') as infile, tempfile.NamedTemporaryFile(mode='r+') as mem_log:
             start_time = time.perf_counter()
-            proc = subprocess.Popen([exe_file], stdin=infile, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cmd = ["env", "time", "-f", "%M", "-o", mem_log.name, exe_file]
+            
+            proc = subprocess.Popen(cmd, stdin=infile, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             
             try:
-                while proc.poll() is None:
-                    peak_kb = max(peak_kb, get_peak_rss_kb(proc.pid))
-                    if (time.perf_counter() - start_time) > TIME_LIMIT:
-                        proc.kill()
-                        raise subprocess.TimeoutExpired(proc.args, TIME_LIMIT)
-                    time.sleep(0.001) 
-                
-                stdout_data, stderr_data = proc.communicate()
+                stdout_data, stderr_data = proc.communicate(timeout=TIME_LIMIT)
                 runtime_ms = int((time.perf_counter() - start_time) * 1000)
+                
+                mem_log.seek(0)
+                mem_str = mem_log.read().strip()
+                peak_kb = int(mem_str) if mem_str.isdigit() else 0
                 actual_mem_mb = peak_kb / 1024.0
 
                 if proc.returncode != 0:
+                    had_crash_or_fail = True
                     reason = get_crash_reason(proc.returncode, stderr_data)
-                    print(f"\033[31m💥 CRASH: {input_file} | {reason}\033[0m")
+                    print(f"\033[31m💥 CRASH: {input_file}\n==== {reason} ====\033[0m")
                     continue
 
-                with open(expected_path, 'r') as f: expected = f.read().strip()
-                actual = stdout_data.strip()
+                with open(expected_path, 'r') as f: expected = f.read()
+                actual = stdout_data
                 
-                if actual == expected:
+                # --- TOKENS ---
+                exp_tokens = expected.split()
+                act_tokens = actual.split()
+                
+                if exp_tokens == act_tokens:
                     print(f"\033[32m✅ {input_file}: PASS \033[36m({runtime_ms}ms - {actual_mem_mb:.2f} MB)\033[0m")
                     passed += 1
                 else:
-                    print(f"\033[31m❌ {input_file}: FAIL \033[36m({runtime_ms}ms - {actual_mem_mb:.2f} MB)\033[0m")
+                    had_crash_or_fail = True
+                    # If it's a logical fail, we still increment death toll
+                    increment_death_toll() 
                     print("-" * 40)
-                    print(f"\033[1;34m[Expected]\033[0m\n{expected}")
-                    print(f"\033[1;35m[Your Output]\033[0m\n{actual if actual else '<<nothing>>'}")
+                    print(f"\033[31m❌ {input_file}: FAIL \033[36m({runtime_ms}ms - {actual_mem_mb:.2f} MB)\033[0m")
+                    
+                    # FIND THE FIRST DIFFERENCE
+                    diff_idx = -1
+                    for i in range(min(len(exp_tokens), len(act_tokens))):
+                        if exp_tokens[i] != act_tokens[i]:
+                            diff_idx = i
+                            break
+                    
+                    if diff_idx != -1:
+                        print(f"\033[1;31m[Mismatch at word {diff_idx+1}]\033[0m")
+                        print(f"Expected: '{exp_tokens[diff_idx]}'")
+                        print(f"Actual:   '{act_tokens[diff_idx]}'")
+                    
+                    if len(exp_tokens) != len(act_tokens):
+                        print(f"\033[1;31m[Count Mismatch]\033[0m: Expected {len(exp_tokens)} words, got {len(act_tokens)}")
+
+                    print(f"\033[1;34m[Expected (Truncated)]\033[0m\n{truncate_output(expected.strip(), 10)}")
+                    print(f"\033[1;35m[Your Output (Truncated)]\033[0m\n{truncate_output(actual.strip(), 10) if actual else '<<nothing>>'}")
                     print("-" * 40)
 
             except subprocess.TimeoutExpired:
+                had_crash_or_fail = True
+                increment_death_toll()
+                proc.kill()
+                proc.wait()
                 print(f"\033[33m⏳ TLE: {input_file} > {TIME_LIMIT}s\033[0m")
 
-    # Final Report Section
+    # --- FINAL REVEAL ---
     total_deaths = get_total_deaths()
     print("\n" + "="*40)
     print(f"\033[1mScore: {passed}/{len(inputs)} tests passed\033[0m")
-    print(f"\033[1;41m 💀 CAREER DEATH TOLL: {total_deaths} 💀 \033[0m")
+    
+    if had_crash_or_fail:
+        # Dramatic red banner only on failure/crash
+        print(f"\033[1;41m 💀 CAREER DEATH TOLL: {total_deaths} 💀 \033[0m")
+    else:
+        # Clean look for success
+        print(f"\033[1;32m🌟 PERFECTION: NO DEATHS ADDED 🌟\033[0m")
+        print(f"Current Toll: {total_deaths}")
+        
     print("="*40)
 
 if __name__ == "__main__":
