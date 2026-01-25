@@ -15,7 +15,7 @@ DEATH_LOG = os.path.join(OUT_DIR, "death_toll.txt")
 WHICHFILE = "coding.cpp"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-TIME_LIMIT = 99.0 
+TIME_LIMIT = 1.0
 
 def truncate_output(text, max_lines=10):
     lines = text.splitlines()
@@ -87,7 +87,7 @@ def run_tests():
 
     inputs = sorted(glob.glob(os.path.join(TEST_DIR, "input*.txt")))
     passed = 0
-    had_crash_or_fail = False
+    had_crash = False
 
     for input_path in inputs:
         input_file = os.path.basename(input_path)
@@ -109,9 +109,10 @@ def run_tests():
                 actual_mem_mb = peak_kb / 1024.0
 
                 if proc.returncode != 0:
-                    had_crash_or_fail = True
+                    had_crash = True
                     reason = get_crash_reason(proc.returncode, stderr_data)
                     print(f"\033[31m💥 CRASH: {input_file}\n==== {reason} ====\033[0m")
+
                     continue
 
                 with open(expected_path, 'r') as f: expected = f.read()
@@ -121,13 +122,12 @@ def run_tests():
                 exp_tokens = expected.split()
                 act_tokens = actual.split()
                 
-                if exp_tokens == act_tokens:
+                if exp_tokens == act_tokens: 
+                    print("-" * 40)
                     print(f"\033[32m✅ {input_file}: PASS \033[36m({runtime_ms}ms - {actual_mem_mb:.2f} MB)\033[0m")
                     passed += 1
                 else:
-                    had_crash_or_fail = True
                     # If it's a logical fail, we still increment death toll
-                    increment_death_toll() 
                     print("-" * 40)
                     print(f"\033[31m❌ {input_file}: FAIL \033[36m({runtime_ms}ms - {actual_mem_mb:.2f} MB)\033[0m")
                     
@@ -144,14 +144,13 @@ def run_tests():
                         print(f"Actual:   '{act_tokens[diff_idx]}'")
                     
                     if len(exp_tokens) != len(act_tokens):
-                        print(f"\033[1;31m[Count Mismatch]\033[0m: Expected {len(exp_tokens)} words, got {len(act_tokens)}")
-
-                    print(f"\033[1;34m[Expected (Truncated)]\033[0m\n{truncate_output(expected.strip(), 10)}")
-                    print(f"\033[1;35m[Your Output (Truncated)]\033[0m\n{truncate_output(actual.strip(), 10) if actual else '<<nothing>>'}")
-                    print("-" * 40)
+                        print(f"\033[1;31m[Count Mismatch]\033[0m\nExpected {len(exp_tokens)} words, got {len(act_tokens)}")
+                        
+                    print(f"\033[1;34m[Expected]\033[0m\n{truncate_output(expected.strip(), 10)}")
+                    print(f"\033[1;35m[Your Output]\033[0m\n{truncate_output(actual.strip(), 10) if actual else '<<nothing>>'}")
 
             except subprocess.TimeoutExpired:
-                had_crash_or_fail = True
+                had_crash = True
                 increment_death_toll()
                 proc.kill()
                 proc.wait()
@@ -159,16 +158,14 @@ def run_tests():
 
     # --- FINAL REVEAL ---
     total_deaths = get_total_deaths()
-    print("\n" + "="*40)
+    print("="*40)
     print(f"\033[1mScore: {passed}/{len(inputs)} tests passed\033[0m")
     
-    if had_crash_or_fail:
+    if had_crash:
         # Dramatic red banner only on failure/crash
-        print(f"\033[1;41m 💀 CAREER DEATH TOLL: {total_deaths} 💀 \033[0m")
-    else:
-        # Clean look for success
-        print(f"\033[1;32m🌟 PERFECTION: NO DEATHS ADDED 🌟\033[0m")
-        print(f"Current Toll: {total_deaths}")
+        print(f"\033[1;41m TOTAL CRASH TOLL: {total_deaths} \033[0m")
+    if passed == len(inputs):
+        print(f"\033[1;32m🌟 PERFECTION: GOOD JOB, NOW TEST SOME EDGE CASES 🌟\033[0m")
         
     print("="*40)
 
