@@ -72,7 +72,7 @@ listview {
     scrollbar: false;
     columns: 2;
     lines: 8;
-    fixed-height: false;
+    fixed-height: true;
 }
 
 element {

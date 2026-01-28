@@ -16,6 +16,7 @@ vim.keymap.set('i', '<Up>', '<nop>')
 vim.keymap.set('i', '<Down>', '<nop>')
 vim.keymap.set('i', '<Left>', '<nop>')
 vim.keymap.set('i', '<Right>', '<nop>')
+vim.keymap.set('n', '<Space>', '<cmd>nohlsearch<cr>', {silent = True})
 
 --require--
 require("config.lazy")
